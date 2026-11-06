@@ -1,81 +1,123 @@
+English | [简体中文](README.zh-CN.md)
+
 # SuperLoader Companion
 
-NeoForge 侧的配套 mod，给 [SuperLoader](https://github.com/Bookstore1037/SuperLoader) 用。它做三件事：
+A NeoForge-side companion mod that bridges gaps between Sinytra Connector and
+Fabric-native mods on Minecraft 1.21.1. It can be used in any neoforge modpack. SuperLoader is optional.
 
-1. **补 refmap**：Fabric mod 在 mixin 配置里声明了 refmap，但 jar 里没有这个文件时，Connector 找不到映射，required mixin 会直接失败（`No refMap loaded`），整轮 Fabric 加载被跳过。companion 在游戏启动前扫一遍 `mods/`，用 Connector 自带的 `mappings.tiny`（可选叠加 Yarn 映射）把 refmap 合成出来，再逐条校验，结果写进报告。
-2. **bclib 去皮桥**：NeoForge 21.1 把斧头去皮改成走数据映射（`BlockState.getToolModifiedState` / `NeoForgeDataMaps.STRIPPABLES`），bclib 注入的 `AxeItem.getStripped` 变成了死代码，于是 BetterEnd / BetterNether 的木头用斧头去不了皮。companion 监听 `BlockToolModificationEvent`，把实现了 bclib `AxeCanStrip` 的方块接回去皮流程。
-3. **运行时数据采集**：把加载阶段和事件数据写进实例的 `logs/superloader-report/`（`runtime.json`、`events.json`），供 SuperLoader 渲染成人类可读的报告。
+It does three things:
 
-## 环境
+1. **Refmap repair.** Some Fabric mods declare a refmap in their mixin config
+   but do not ship the file. Connector cannot remap their mixins, and a required
+   mixin fails with `No refMap loaded`, which aborts Fabric loading for that
+   round. Before the game starts, the companion scans `mods/`, synthesizes the
+   missing refmap from Connector's `mappings.tiny` (optionally layered with
+   Yarn), verifies every entry, and writes the result to a report. Repaired jars
+   are backed up to `mods/.superloader-refmap/`.
 
-- Minecraft **1.21.1**
-- NeoForge **21.1.265**
-- Java **21**
+2. **bclib axe-strip bridge.** NeoForge 21.1 moved axe stripping to a data-map
+   path (`BlockState.getToolModifiedState` / `NeoForgeDataMaps.STRIPPABLES`).
+   bclib's mixin on `AxeItem.getStripped` became dead code, so BetterEnd and
+   BetterNether logs could not be stripped. The companion listens for
+   `BlockToolModificationEvent` and re-registers every block implementing
+   bclib's `AxeCanStrip` back into the stripping flow. One bridge covers all
+   mods that use the interface, not a single mod ID.
 
-## 构建
+3. **Runtime data collection.** During load and gameplay it writes
+   `runtime.json` and `events.json` into the instance's
+   `logs/superloader-report/`. These are optional diagnostics consumed by
+   SuperLoader's report renderer; the mod works without SuperLoader installed.
 
-需要 JDK 21。离线构建：
+## Environment
+
+In addition to Minecraft 1.21.1 and NeoForge 21.1.265, this mod requires:
+
+- **Sinytra Connector** (`connector-2.0.0-beta.17+1.21.1-full.jar` or compatible)
+- **Forgified Fabric API** (`forgified-fabric-api-0.116.15+2.3.6+1.21.1.jar` or compatible)
+
+Both are hard dependencies: refmap repair reads Connector's `mappings.tiny`,
+and the bridges and runtime data collection rely on FFAPI's compatibility
+layer. The mod will not function without them.
+
+They are distributed on Modrinth (`connector`, `forgified-fabric-api`) and can
+be installed by any launcher. SuperLoader installs them automatically if you
+use it.
+
+## Build
+
+Requires JDK 21.
 
 ```bat
 gradlew.bat build --offline
 ```
 
-产物：`build/libs/superloader_companion-0.6.3.jar`。
+Output: `build/libs/superloader_companion-0.6.3.jar`.
 
-也可以直接 `gradlew.bat build`（会联网拉依赖），CI 里就是这么跑的。
+`gradlew.bat build` (online) also works; that is what CI runs.
 
-## 安装
+## Install
 
-把 jar 丢进实例的 mods 目录：
+Drop the jar into any NeoForge 1.21.1 instance's `mods/` directory. No launcher
+or loader integration is required: it is a normal NeoForge mod. SuperLoader's
+`install` / `launch` copies it automatically if you use SuperLoader, but that
+is a convenience, not a requirement.
 
-```
-<你的 SuperLoader 根目录>\instances\1.21.1\mods\
-```
+## Toggles
 
-SuperLoader 的 `install` / `launch` 会自动把对应版本的 companion 放进去，通常不需要手动拷。
-
-## 开关
-
-| 变量 | 作用 |
+| Variable | Effect |
 |---|---|
-| `SL_NO_REFMAP_REPAIR=1` | 关掉启动前的 refmap 修补 |
-| `SL_NO_AXE_BRIDGE=1` | 关掉 bclib 去皮桥 |
-| `-Dsuperloader.axeBridge.disabled=true` | 同上（JVM 参数形式） |
+| `SL_NO_REFMAP_REPAIR=1` | Disable pre-launch refmap repair |
+| `SL_NO_AXE_BRIDGE=1` | Disable the bclib axe-strip bridge |
+| `-Dsuperloader.axeBridge.disabled=true` | Same as above, JVM-arg form |
 
-## 日志里看什么
+Every bridge is on by default and can be disabled without removing the mod.
 
-- `[refmap] 缺失 refmap N 个，修补 N 个 jar，条目 N，校验通过 N，未解析 N，yarn=loaded`
-- `[refmap-repair] …`：修补工具自己的输出行
-- `[sl-bridge] axe strip bridge installed (bclib AxeCanStrip -> BlockToolModificationEvent)`：去皮桥装上了
-- `[sl-bridge] axe strip: Block{betterend:lacugrove_log} -> Block{betterend:lacugrove_stripped_log}`：去皮真的命中
+## Log lines
 
-## 单独跑 refmap 修补工具
+- `[refmap] missing N, repaired N jars, entries N, verified N, unresolved N, yarn=loaded`
+- `[refmap-repair] ...` from the repair tool itself
+- `[sl-bridge] axe strip bridge installed (bclib AxeCanStrip -> BlockToolModificationEvent)`
+- `[sl-bridge] axe strip: Block{betterend:lacugrove_log} -> Block{betterend:lacugrove_stripped_log}`
 
-平时不用手动跑，SuperLoader 启动前会调。要排查时：
+## Running the refmap repair tool standalone
+
+Normally invoked by SuperLoader before launch. For manual debugging:
 
 ```bat
 java -cp build\libs\superloader_companion-0.6.3.jar com.superloader.companion.repair.RefmapRepair ^
-  --mods  "D:\SLData\instances\1.21.1\mods" ^
-  --connector "D:\SLData\instances\1.21.1\mods\connector-2.0.0-beta.17+1.21.1-full.jar" ^
+  --mods  "<instance>\mods" ^
+  --connector "<instance>\mods\connector-2.0.0-beta.17+1.21.1-full.jar" ^
   --report "out\refmap_repair.json" ^
-  --mc-jar "D:\SLData\instances\1.21.1\libraries\net\minecraft\client\1.21.1-20240808.144430\client-1.21.1-20240808.144430-srg.jar" ^
+  --mc-jar "<instance>\libraries\net\minecraft\client\1.21.1-20240808.144430\client-1.21.1-20240808.144430-srg.jar" ^
   --yarn-version 1.21.1+build.3 ^
   --yarn-sha1 53c8c9729c0dd52e3549c04f16eca89a15818822 ^
   --cache ".cache\mappings" ^
   --dry-run
 ```
 
-- `--dry-run` 只算不写；去掉就会真的改 jar（改动前备份到 `mods\.superloader-refmap\`）。
-- `--restore` 用备份把 jar 还原。
-- 报告里每条映射都带 `verified: true/false`：`false` 的进 unresolved，不会静默写错映射。
-- 没有 `--yarn-version/--yarn-sha1` 也能跑，只是裸 Yarn 名（`getNeighboringEntry(...)` 这类）解析不出来。
+Notes:
 
-## 已知限制
+- `--dry-run` computes without writing. Drop it to modify jars (backups go to
+  `mods/.superloader-refmap/`).
+- `--restore` restores jars from backup.
+- Every mapping carries `verified: true/false` in the report; unverified
+  entries are listed as unresolved and are never silently written.
+- `--yarn-version` and `--yarn-sha1` are optional; without them, bare Yarn
+  names cannot be resolved.
 
-- 只修"缺 refmap"这一类缺口。refmap 存在但内容错、或者 mixin 目标被 NeoForge 改掉的（`Language.loadFromJson`、`CropBlock.getGrowthSpeed`、`AxeItem.getStripped` 这类目标迁移），这个 mod 管不了。
-- 去皮桥只认实现 bclib `AxeCanStrip` 的方块；别的 mod 自带的去皮逻辑仍然走 NeoForge 数据映射。
-- 版本是硬编码的（`gradle.properties` 的 `mod_version` 与 `SuperLoaderCompanion.VERSION` 要同时改）。
+## Known limitations
+
+- Refmap repair only fixes the "refmap declared but missing" case. It cannot
+  fix mixins whose NeoForge-side target was moved or changed
+  (`Language.loadFromJson`, `CropBlock.getGrowthSpeed`, `AxeItem.getStripped`).
+  Those are Connector-level gaps, not refmap gaps.
+- The axe-strip bridge only covers blocks implementing bclib `AxeCanStrip`.
+  Other mods with their own stripping logic still use NeoForge data maps.
+- Versions are hardcoded: `gradle.properties` `mod_version` and
+  `SuperLoaderCompanion.VERSION` must be changed together.
+- 1.21.1 support only. Sinytra Connector has ended LTS support for 1.21.1, so
+  upstream fixes for the remaining gaps are not expected.
 
 ## License
 
-MIT，见 [LICENSE](LICENSE)。
+MIT, see [LICENSE](LICENSE).
