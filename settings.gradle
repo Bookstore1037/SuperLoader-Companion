@@ -1,0 +1,21 @@
+pluginManagement {
+    repositories {
+        maven { url = "https://neoforged.forgecdn.net/releases" }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        maven {url = 'https://bmclapi2.bangbang93.com/maven/'
+            allowInsecureProtocol = true}
+        maven { url = "https://neoforged.forgecdn.net/releases" }
+        maven { url = "https://neoforged.forgecdn.net/mojang-meta" }
+        maven { url = "https://maven.aliyun.com/repository/public" }
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'SuperLoaderCompanion'
